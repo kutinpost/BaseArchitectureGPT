@@ -1,119 +1,325 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>🜍 Процесс размышления ChatGPT: базовая архитектура (расширенный техно-драфт)</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>🜍 Процесс размышления ChatGPT: базовая архитектура</title>
+  <meta name="description" content="Технический разбор базового пайплайна ChatGPT: от входа и парсинга до LLM-генерации, постобработки и выдачи ответа." />
+  <meta name="color-scheme" content="light dark">
   <style>
-    :root { --fg:#0f172a; --muted:#475569; --accent:#2563eb; --bg:#ffffff; --code:#111827; --border:#e5e7eb; }
-    @media (prefers-color-scheme: dark){
-      :root { --fg:#e5e7eb; --muted:#94a3b8; --accent:#60a5fa; --bg:#0b1020; --code:#e5e7eb; --border:#1f2937; }
-      body { background:radial-gradient(60vw 60vw at 50% -10%, rgba(96,165,250,.07), transparent 60%) var(--bg); }
+    :root{
+      --bg:#0b0c10;--paper:#0f1115;--ink:#e6e6e6;--muted:#9aa3b2;
+      --accent:#7c5cff;--accent-2:#26c6da;--ok:#19c37d;--shadow:0 10px 40px rgba(0,0,0,.35);
+      --radius-xl:20px;--radius-lg:14px;--radius-md:10px;--maxw:880px;
+    }
+    @media (prefers-color-scheme: light){
+      :root{
+        --bg:#f6f7fb;--paper:#ffffff;--ink:#141826;--muted:#586071;
+        --accent:#5a43ff;--accent-2:#0ea5b6;--ok:#10b981;--shadow:0 12px 36px rgba(16,24,40,.08);
+      }
     }
     *{box-sizing:border-box}
-    body{margin:0;font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Noto Sans","Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji";color:var(--fg);background:var(--bg)}
-    article{max-width:860px;padding:20px 18px 64px;margin:0 auto}
-    h1{font-size:clamp(28px,4vw,36px);line-height:1.2;margin:8px 0 10px}
-    h2{font-size:clamp(20px,3.2vw,26px);margin:28px 0 10px}
+    html,body{margin:0;padding:0;background:linear-gradient(180deg,var(--bg),#0c0d12 50%,var(--bg));color:var(--ink);font:16px/1.6 ui-sans-serif,-apple-system,Segoe UI,Roboto,Inter,"Helvetica Neue",Arial,"Noto Sans","Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol"}
+    .progress{position:fixed;inset:0 0 auto 0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent-2));transform-origin:0 50%;transform:scaleX(0);z-index:5;box-shadow:var(--shadow)}
+    header.hero{position:relative;overflow:hidden;margin:28px auto 0;max-width:var(--maxw);border-radius:var(--radius-xl);
+      background:
+        radial-gradient(1200px 300px at 0% 0%, rgba(124,92,255,.18), transparent 60%),
+        radial-gradient(1000px 300px at 100% 0%, rgba(38,198,218,.18), transparent 60%),
+        linear-gradient(180deg, var(--paper), var(--paper));
+      box-shadow:var(--shadow)}
+    .hero-inner{padding:36px 26px 28px}
+    .kicker{display:inline-flex;gap:8px;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(124,92,255,.12);color:var(--accent);font-weight:600;font-size:12px;letter-spacing:.4px;text-transform:uppercase}
+    .kicker .dot{width:6px;height:6px;border-radius:999px;background:var(--accent)}
+    h1{margin:.6rem 0 0;font-size:clamp(28px,4.2vw,44px);line-height:1.15;letter-spacing:-.02em}
+    .sub{margin:.8rem 0 0;color:var(--muted);font-size:clamp(15px,2.5vw,18px)}
+    .meta{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:16px;color:var(--muted);font-size:14px}
+    .meta b{color:var(--ink)}
+    .hero-footer{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-top:20px;border-top:1px dashed rgba(124,92,255,.28);padding-top:16px}
+    .cta{display:inline-flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;border:1px solid rgba(124,92,255,.35);color:var(--accent);background:rgba(124,92,255,.08);text-decoration:none;font-weight:600}
+    .cta:hover{background:rgba(124,92,255,.14)}
+    .copy{cursor:pointer;border:none;background:transparent;color:var(--muted);font-size:14px}
+    main{max-width:var(--maxw);margin:22px auto;padding:0 10px}
+    article{background:var(--paper);border-radius:var(--radius-xl);box-shadow:var(--shadow);overflow:hidden}
+    .content{padding:22px 20px 10px}
+    .lead{margin:0;background:linear-gradient(180deg, rgba(124,92,255,.09), rgba(124,92,255,0));border-left:4px solid var(--accent);padding:14px 16px;border-radius:10px;color:var(--ink)}
+    nav.toc{margin:16px 0 6px;padding:14px;border-radius:12px;background:linear-gradient(180deg, rgba(14,165,182,.08), transparent 60%);border:1px solid rgba(14,165,182,.25)}
+    .toc h3{margin:0 0 8px;font-size:14px;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+    .toc a{display:block;color:var(--ink);text-decoration:none;padding:6px 4px;border-radius:8px}
+    .toc a:hover{background:rgba(14,165,182,.08)}
+    h2{margin:28px 0 8px;font-size:clamp(22px,3vw,28px);letter-spacing:-.01em}
+    h3{margin:18px 0 6px;font-size:clamp(18px,2.6vw,22px)}
     p{margin:10px 0}
-    hr{border:0;height:1px;background:linear-gradient(90deg,transparent,var(--border),transparent);margin:22px 0}
-    a{color:var(--accent);text-decoration:none}
-    a:hover{text-decoration:underline}
-    code,pre{background:rgba(148,163,184,.1);color:var(--code);padding:.12em .36em;border-radius:6px}
-    pre{padding:14px;overflow:auto}
-    ul{padding-left:20px}
-    .note{background:rgba(2,6,23,.04);border:1px solid var(--border);padding:12px;border-radius:12px}
-    .ascii{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;font-size:13px}
-    table{width:100%;border-collapse:collapse;margin:20px 0}
-    th,td{padding:8px 10px;border:1px solid var(--border);text-align:left}
-    th{background:rgba(148,163,184,.1)}
+    ul,ol{margin:8px 0 14px 20px}
+    .callout{display:flex;gap:12px;align-items:flex-start;margin:14px 0;padding:14px;border:1px solid rgba(124,92,255,.28);border-radius:12px;background:linear-gradient(180deg, rgba(124,92,255,.08), transparent)}
+    .callout .emoji{font-size:20px}
+    .keyline{height:1px;background:linear-gradient(90deg,rgba(124,92,255,.35), transparent)}
+    .grid{display:grid;gap:12px}
+    .stage{border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px 14px;background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,0))}
+    .stage .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+    .stage .title{font-weight:700}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+    .diagram{border-radius:12px;border:1px dashed rgba(14,165,182,.4);padding:14px;white-space:pre-wrap;background:linear-gradient(180deg, rgba(14,165,182,.05), transparent)}
+    /* Таблица */
+    .table-wrap{overflow:auto;border:1px solid rgba(255,255,255,.08);border-radius:12px}
+    table{width:100%;border-collapse:separate;border-spacing:0;min-width:680px}
+    thead th{position:sticky;top:0;background:rgba(124,92,255,.12);color:var(--ink);text-align:left;padding:10px;border-bottom:1px solid rgba(124,92,255,.35)}
+    td,th{padding:10px}
+    tbody tr:nth-child(odd){background:rgba(255,255,255,.03)}
+    tbody td{border-bottom:1px solid rgba(255,255,255,.06)}
+    .refs{padding:18px 20px;background:linear-gradient(180deg, rgba(14,165,182,.05), rgba(124,92,255,.05))}
+    .refs li{margin:6px 0}
+    .share{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .btn{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(124,92,255,.35);padding:8px 12px;border-radius:12px;background:rgba(124,92,255,.08);color:var(--ink);text-decoration:none;font-weight:600}
+    .btn:hover{background:rgba(124,92,255,.14)}
+    footer.foot{max-width:var(--maxw);margin:14px auto 40px;color:var(--muted);font-size:14px;text-align:center}
+    .small{font-size:12px;color:var(--muted)}
   </style>
 </head>
 <body>
-<article>
-<h1>🜍 Процесс размышления ChatGPT: базовая архитектура</h1>
-<p>Разбираем <strong>базовый пайплайн</strong> работы ChatGPT — без философии и «магии». Это технический взгляд на то, как устроена обработка запроса и какую роль в этом играет LLM.</p>
-<hr>
+  <div class="progress" id="progress"></div>
 
-<h2>1) Вход (Input)</h2>
-<p>Пользователь отправляет текстовый запрос через интерфейс (web/app/API). На этом шаге данные сырые: могут содержать ошибки, эмоции, неформальную структуру.</p>
+  <header class="hero" role="banner">
+    <div class="hero-inner">
+      <span class="kicker"><span class="dot"></span> Архитектура · ИИ</span>
+      <h1>🜍 Процесс размышления ChatGPT: базовая архитектура</h1>
+      <p class="sub">Технический взгляд на то, как устроен пайплайн ChatGPT — без философии и «магии». Что делает LLM, а что — инфраструктура вокруг неё.</p>
+      <div class="meta">
+        <span><b>Автор:</b> Krios</span>
+        <span>·</span>
+        <span><b>Дата:</b> 10 сентября 2025</span>
+        <span>·</span>
+        <span>Базовый пайплайн</span>
+      </div>
+      <div class="hero-footer">
+        <a class="cta" href="https://t.me/kriosmeta" target="_blank" rel="noopener">🔗 Подписаться в Телеграм</a>
+        <button class="copy" id="copyBtn" aria-label="Скопировать ссылку">Скопировать ссылку на статью</button>
+      </div>
+    </div>
+  </header>
 
-<h2>2) Разбор (Parsing)</h2>
-<p>Система приводит текст к машинному представлению:</p>
-<ul>
-  <li><strong>Токенизация</strong> (разбиение текста на токены) — <a href="https://platform.openai.com/tokenizer" target="_blank" rel="noopener">пример</a>.</li>
-  <li><strong>Векторизация</strong> токенов для входа в нейросеть.</li>
-  <li>Учёт контекста текущего диалога (суммаризация истории, обрезка по лимиту).</li>
-</ul>
+  <main role="main">
+    <article>
+      <div class="content">
 
-<h2>3) Определение намерения (Intent)</h2>
-<p>На основе входа и метаданных модель (или отдельные классификаторы) определяют задачу:</p>
-<ul>
-  <li>ответ на вопрос,</li>
-  <li>объяснение,</li>
-  <li>код/генерация текста,</li>
-  <li>поддержка диалога,</li>
-  <li>перевод или форматирование.</li>
-</ul>
-<p>Эта стадия часто неявная, но критична: от неё зависит выбор системных подсказок и режимов.</p>
+        <p class="lead">Разбираем базовый пайплайн работы ChatGPT — от входа и парсинга до LLM-ядра, постфильтров и выдачи результата. Это «скелет» размышления, на который навешиваются режимы, инструменты и политики.</p>
 
-<h2>4) Генерация (LLM Core)</h2>
-<p>Работает языковая модель (Transformer). Она предсказывает последовательность токенов, опираясь на:</p>
-<ul>
-  <li><strong>Контекст</strong> (prompt + история диалога),</li>
-  <li><strong>Системные инструкции</strong> (например, запреты на определённые темы),</li>
-  <li><strong>Вероятностное распределение</strong> слов (sampling, temperature, top-k/p).</li>
-</ul>
-<p>Ключевые материалы:
-  <a href="https://arxiv.org/abs/1706.03762" target="_blank">Vaswani et al., 2017 — Attention Is All You Need</a>,
-  <a href="https://arxiv.org/abs/2005.14165" target="_blank">Brown et al., 2020 — GPT-3</a>,
-  <a href="https://arxiv.org/abs/2203.02155" target="_blank">Ouyang et al., 2022 — RLHF</a>.
-</p>
+        <nav class="toc" aria-label="Содержание">
+          <h3>Содержание</h3>
+          <a href="#sec1">1) Вход (Input)</a>
+          <a href="#sec2">2) Разбор (Parsing)</a>
+          <a href="#sec3">3) Определение намерения (Intent)</a>
+          <a href="#sec4">4) Генерация (LLM Core)</a>
+          <a href="#sec5">5) Постобработка (Post-Filtering)</a>
+          <a href="#sec6">6) Выход (Output)</a>
+          <a href="#table">📊 Таблица стадий</a>
+          <a href="#diagram">Схема пайплайна (ASCII)</a>
+          <a href="#thesis">Ключевой тезис</a>
+          <a href="#refs">Источники</a>
+        </nav>
 
-<h2>5) Постобработка (Post-Filtering)</h2>
-<p>После генерации выход проходит проверки:</p>
-<ul>
-  <li><strong>Safety</strong> — фильтры на запрещённый контент (насилие, взлом, персональные данные).</li>
-  <li><strong>Consistency</strong> — проверка логики, стиля и длины.</li>
-  <li><strong>Heuristics</strong> — минимизация «галлюцинаций» (например, переформулировка сомнительных фрагментов).</li>
-</ul>
-<p>Документация: <a href="https://platform.openai.com/docs/" target="_blank">OpenAI Platform Docs</a>.</p>
+        <div class="keyline"></div>
 
-<h2>6) Выход (Output)</h2>
-<p>Финальный текст возвращается пользователю (или API-клиенту). На базовом уровне цикл завершается здесь.</p>
+        <section id="sec1" class="grid">
+          <h2>1) Вход (Input)</h2>
+          <div class="stage">
+            <div class="label">Описание</div>
+            <div class="title">Пользователь отправляет текстовый запрос через интерфейс (web/app/API).</div>
+            <p>На этом шаге данные сырые: возможны ошибки, эмоции, разговорная форма, неформальная структура.</p>
+          </div>
+        </section>
 
-<hr>
-<h2>📊 Таблица стадий</h2>
-<table>
-  <thead>
-    <tr><th>Стадия</th><th>Что происходит</th><th>Инструменты/протоколы</th></tr>
-  </thead>
-  <tbody>
-    <tr><td>Input</td><td>Запрос в сыром виде</td><td>Интерфейс / API</td></tr>
-    <tr><td>Parsing</td><td>Токенизация, векторизация, обрезка истории</td><td>BPE, embeddings</td></tr>
-    <tr><td>Intent</td><td>Определение цели</td><td>Классификаторы / эвристики</td></tr>
-    <tr><td>LLM Core</td><td>Генерация текста</td><td>Transformer, RLHF</td></tr>
-    <tr><td>Post-Filtering</td><td>Фильтры и корректировки</td><td>Safety, heuristics</td></tr>
-    <tr><td>Output</td><td>Возврат ответа</td><td>UI / API</td></tr>
-  </tbody>
-</table>
+        <section id="sec2" class="grid">
+          <h2>2) Разбор (Parsing)</h2>
+          <div class="stage">
+            <div class="label">Механика</div>
+            <ul>
+              <li><b>Токенизация</b> (разбиение текста на токены) — пример: BPE.</li>
+              <li><b>Векторизация</b> токенов для входа в нейросеть.</li>
+              <li><b>Учёт контекста диалога</b>: суммаризация истории, обрезка по лимиту контекста.</li>
+            </ul>
+          </div>
+        </section>
 
-<div class="note">
-  <strong>Схема пайплайна (ASCII):</strong>
-  <pre class="ascii">[Input] → [Parsing] → [Intent] → [LLM] → [Post-Filtering] → [Output]</pre>
-</div>
+        <section id="sec3" class="grid">
+          <h2>3) Определение намерения (Intent)</h2>
+          <div class="stage">
+            <div class="label">Классификация</div>
+            <p>На основе входа и метаданных модель (или отдельные классификаторы) определяют задачу:</p>
+            <ul>
+              <li>ответ на вопрос;</li>
+              <li>объяснение;</li>
+              <li>код/генерация текста;</li>
+              <li>поддержка диалога;</li>
+              <li>перевод или форматирование.</li>
+            </ul>
+            <div class="callout"><span class="emoji">🎯</span>
+              <div><b>Почему это важно?</b> Именно на этом шаге выбираются системные подсказки и режимы — от этого зависит поведение LLM в ядре.</div>
+            </div>
+          </div>
+        </section>
 
-<hr>
-<h2>Ключевой тезис</h2>
-<p><strong>LLM — это центральный языковой компонент (шаг 4), но не весь процесс рассуждения.</strong> Без стадий разбора, фильтрации и системных ограничений ChatGPT не выглядел бы «мыслящим» инструментом.</p>
+        <section id="sec4" class="grid">
+          <h2>4) Генерация (LLM Core)</h2>
+          <div class="stage">
+            <div class="label">Трансформер</div>
+            <p>Работает языковая модель (<i>Transformer</i>). Она предсказывает последовательность токенов, опираясь на:</p>
+            <ul>
+              <li>контекст (prompt + история диалога);</li>
+              <li>системные инструкции (включая политики и запреты);</li>
+              <li>вероятностное распределение слов (<span class="mono">sampling</span>, <span class="mono">temperature</span>, <span class="mono">top-k/p</span> и др.).</li>
+            </ul>
+            <p class="small">Ключевые материалы: Vaswani et al., 2017 “Attention Is All You Need”; Brown et al., 2020 “Language Models are Few-Shot Learners”; Ouyang et al., 2022 “Training language models to follow instructions with human feedback (RLHF)”.</p>
+          </div>
+        </section>
 
-<hr>
-<a href="https://t.me/kriosmeta" target="_blank" rel="noopener"
-   style="display:inline-block;padding:18px 26px;border-radius:14px;
-          background:#229ED9;color:#fff;text-decoration:none;
-          font-size:22px;font-weight:700;text-align:center;">
-  🔗 Подписаться в Телеграм — t.me/kriosmeta
-</a>
-</article>
+        <section id="sec5" class="grid">
+          <h2>5) Постобработка (Post-Filtering)</h2>
+          <div class="stage">
+            <div class="label">Проверки</div>
+            <ul>
+              <li><b>Safety:</b> фильтры на запрещённый контент (насилие, взлом, персональные данные).</li>
+              <li><b>Consistency:</b> проверка логики, стиля и длины.</li>
+              <li><b>Heuristics:</b> минимизация «галлюцинаций» (например, переформулировка сомнительных фрагментов).</li>
+            </ul>
+            <p class="small">Документация: OpenAI Platform Docs (политики, безопасность, best practices).</p>
+          </div>
+        </section>
+
+        <section id="sec6" class="grid">
+          <h2>6) Выход (Output)</h2>
+          <div class="stage">
+            <div class="label">Доставка</div>
+            <p>Финальный текст возвращается пользователю (или API-клиенту). На базовом уровне цикл завершается здесь, а в прод-системах добавляются логирование, телеметрия, аналитика качества и обратная связь.</p>
+          </div>
+        </section>
+
+        <div class="keyline" style="margin:18px 0;"></div>
+
+        <section id="table">
+          <h2>📊 Таблица стадий</h2>
+          <div class="table-wrap" role="region" aria-label="Таблица стадий с горизонтальной прокруткой">
+            <table>
+              <thead>
+                <tr>
+                  <th>Стадия</th>
+                  <th>Что происходит</th>
+                  <th>Инструменты/протоколы</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Input</td>
+                  <td>Запрос в сыром виде</td>
+                  <td>Интерфейс / API</td>
+                </tr>
+                <tr>
+                  <td>Parsing</td>
+                  <td>Токенизация, векторизация, обрезка истории</td>
+                  <td>BPE, embeddings</td>
+                </tr>
+                <tr>
+                  <td>Intent</td>
+                  <td>Определение цели</td>
+                  <td>Классификаторы / эвристики</td>
+                </tr>
+                <tr>
+                  <td>LLM Core</td>
+                  <td>Генерация текста</td>
+                  <td>Transformer, RLHF</td>
+                </tr>
+                <tr>
+                  <td>Post-Filtering</td>
+                  <td>Фильтры и корректировки</td>
+                  <td>Safety, heuristics</td>
+                </tr>
+                <tr>
+                  <td>Output</td>
+                  <td>Возврат ответа</td>
+                  <td>UI / API</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="diagram">
+          <h2>Схема пайплайна (ASCII)</h2>
+          <pre class="diagram mono" aria-label="ASCII-схема пайплайна">
+[Input] → [Parsing] → [Intent] → [LLM] → [Post-Filtering] → [Output]
+          </pre>
+        </section>
+
+        <section id="thesis">
+          <h2>Ключевой тезис</h2>
+          <div class="callout"><span class="emoji">🧠</span>
+            <div>
+              <b>LLM — центральный языковой компонент (шаг 4), но не весь процесс рассуждения.</b>
+              Без стадий разбора, фильтрации и системных ограничений ChatGPT не выглядел бы «мыслящим» инструментом.
+            </div>
+          </div>
+          <div class="share" aria-label="Поделиться">
+            <a class="btn" href="https://t.me/kriosmeta" target="_blank" rel="noopener">🔗 Телеграм</a>
+            <button class="btn" id="copyBtn2">📋 Копировать ссылку</button>
+          </div>
+        </section>
+
+        <div class="keyline" style="margin:18px 0;"></div>
+
+        <section id="refs" class="refs">
+          <h3>Источники</h3>
+          <ol>
+            <li>Vaswani et al., 2017 — <i>Attention Is All You Need</i>.</li>
+            <li>Brown et al., 2020 — <i>Language Models are Few-Shot Learners (GPT-3)</i>.</li>
+            <li>Ouyang et al., 2022 — <i>Training language models to follow instructions with human feedback (RLHF)</i>.</li>
+            <li>OpenAI Platform Docs — безопасность, политики, best practices.</li>
+          </ol>
+          <p class="small">Примечание: при публикации подставьте точные URL источников.</p>
+        </section>
+
+      </div>
+    </article>
+  </main>
+
+  <footer class="foot">
+    © 2025 Интеллектуальная марка Krios. Все права защищены.
+  </footer>
+
+  <script>
+    // Прогресс чтения
+    const bar = document.getElementById('progress');
+    const setProgress = () => {
+      const h = document.documentElement;
+      const scrolled = (h.scrollTop) / (h.scrollHeight - h.clientHeight);
+      bar.style.transform = `scaleX(${Math.max(0, Math.min(1, scrolled))})`;
+    };
+    document.addEventListener('scroll', setProgress, {passive:true});
+    window.addEventListener('resize', setProgress);
+    setProgress();
+
+    // Копирование ссылки
+    const copy = async () => {
+      try{
+        await navigator.clipboard.writeText(location.href);
+        const ok = 'Ссылка скопирована ✔';
+        [document.getElementById('copyBtn'), document.getElementById('copyBtn2')]
+          .filter(Boolean).forEach(btn=>{
+            const prev = btn.textContent;
+            btn.textContent = ok;
+            setTimeout(()=>btn.textContent = prev, 1800);
+          });
+      }catch(e){}
+    };
+    document.getElementById('copyBtn')?.addEventListener('click', copy);
+    document.getElementById('copyBtn2')?.addEventListener('click', copy);
+
+    // Плавные якоря
+    document.querySelectorAll('a[href^="#"]').forEach(a=>{
+      a.addEventListener('click', e=>{
+        const id = a.getAttribute('href').slice(1);
+        const el = document.getElementById(id);
+        if(el){ e.preventDefault(); el.scrollIntoView({behavior:'smooth', block:'start'}); }
+      })
+    })
+  </script>
 </body>
 </html>
